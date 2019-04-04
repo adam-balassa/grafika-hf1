@@ -1,39 +1,53 @@
 //=============================================================================================
-// Triangle with smooth color and interactive polyline 
+// Mintaprogram: Zöld háromszög. Ervenyes 2018. osztol.
+//
+// A beadott program csak ebben a fajlban lehet, a fajl 1 byte-os ASCII karaktereket tartalmazhat, BOM kihuzando.
+// Tilos:
+// - mast "beincludolni", illetve mas konyvtarat hasznalni
+// - faljmuveleteket vegezni a printf-et kiveve
+// - Mashonnan atvett programresszleteket forrasmegjeloles nelkul felhasznalni es
+// - felesleges programsorokat a beadott programban hagyni!!!!!!! 
+// - felesleges kommenteket a beadott programba irni a forrasmegjelolest kommentjeit kiveve
+// ---------------------------------------------------------------------------------------------
+// A feladatot ANSI C++ nyelvu forditoprogrammal ellenorizzuk, a Visual Studio-hoz kepesti elteresekrol
+// es a leggyakoribb hibakrol (pl. ideiglenes objektumot nem lehet referencia tipusnak ertekul adni)
+// a hazibeado portal ad egy osszefoglalot.
+// ---------------------------------------------------------------------------------------------
+// A feladatmegoldasokban csak olyan OpenGL fuggvenyek hasznalhatok, amelyek az oran a feladatkiadasig elhangzottak 
+// A keretben nem szereplo GLUT fuggvenyek tiltottak.
+//
+// NYILATKOZAT
+// ---------------------------------------------------------------------------------------------
+// Nev    : Balassa Ádám
+// Neptun : DXXEXO
+// ---------------------------------------------------------------------------------------------
+// ezennel kijelentem, hogy a feladatot magam keszitettem, es ha barmilyen segitseget igenybe vettem vagy
+// mas szellemi termeket felhasznaltam, akkor a forrast es az atvett reszt kommentekben egyertelmuen jeloltem.
+// A forrasmegjeloles kotelme vonatkozik az eloadas foliakat es a targy oktatoi, illetve a
+// grafhazi doktor tanacsait kiveve barmilyen csatornan (szoban, irasban, Interneten, stb.) erkezo minden egyeb
+// informaciora (keplet, program, algoritmus, stb.). Kijelentem, hogy a forrasmegjelolessel atvett reszeket is ertem,
+// azok helyessegere matematikai bizonyitast tudok adni. Tisztaban vagyok azzal, hogy az atvett reszek nem szamitanak
+// a sajat kontribucioba, igy a feladat elfogadasarol a tobbi resz mennyisege es minosege alapjan szuletik dontes.
+// Tudomasul veszem, hogy a forrasmegjeloles kotelmenek megsertese eseten a hazifeladatra adhato pontokat
+// negativ elojellel szamoljak el es ezzel parhuzamosan eljaras is indul velem szemben.
 //=============================================================================================
 #include "framework.h"
-#include <math.h>
-#include <cstdlib>
-#include <ctime>
 
-//#include "shaders.h"
-//#include "camera.h"
-//#include "world.h"
-//#include "triangle.h"
-//#include "linestrip.h"
-//#include "Circle.h"
-//#include "kochanek.h"
-//#include "Biker.h"
-
-const float maxWidth = 9.0f;
-const float minWidth = -9.0f;
+const float maxWidth = 10.0f;
+const float minWidth = -10.0f;
 
 
-inline void printFloats(const std::vector<float>& floats) {
-	for (const float f : floats) printf("%f ", f);
-	printf("\n");
+const float PI = (float)M_PI;
+
+inline vec2  m(const vec2& v1, const vec2& v2) {
+	return (v2 - v1) * (1  / (v2.x - v1.x));
 }
-inline void printVec(const vec2& vec) {
-	printf("(%f %f)\n", vec.x, vec.y);
+inline float  m2(const vec2& v1, const vec2& v2) {
+	return (v2.y - v1.y) * (1 / (v2.x - v1.x));
 }
-inline float m(const vec2& v1, const vec2& v2) {
-	return (v2.y - v1.y) / (v2.x - v1.x);
-}
-
-const float PI = (float) M_PI;
 
 class Shader {
-	const char const * vertexSource = R"(
+	const char * vertexSource = R"(
 		#version 330
 		precision highp float;
 
@@ -51,7 +65,7 @@ class Shader {
 	)";
 
 	// fragment shader in GLSL
-	const char const * fragmentSource = R"(
+	const char * fragmentSource = R"(
 		#version 330
 		precision highp float;
 
@@ -63,18 +77,65 @@ class Shader {
 		}
 	)";
 
-	GPUProgram gpuProgram;
+	const char * textureVertexShader = R"(
+		#version 330
+		precision highp float;
+
+		layout(location = 0) in vec2 vertexPosition;	// Attrib Array 0
+
+		out vec2 texCoord;								// output attribute
+
+		void main() {
+			texCoord = (vertexPosition + vec2(1, 1)) / 2;						// from clipping to texture space
+			gl_Position = vec4(vertexPosition.x, vertexPosition.y, 0, 1); 		// already in clipping space
+		}
+	)";
+
+	const char * textureFragmentShader = R"(
+		#version 330
+		precision highp float;
+
+		uniform sampler2D textureUnit;
+
+		in vec2 texCoord;			// variable input: interpolated texture coordinates
+		out vec4 fragmentColor;		// output that goes to the raster memory as told by glBindFragDataLocation
+		
+		void main() {
+			fragmentColor = texture(textureUnit, texCoord);
+		}
+	)";
+
+
+	GPUProgram simpleProgram;
+	GPUProgram textureProgram;
 public: 
-	void initializeShader() {
-		gpuProgram.Create(vertexSource, fragmentSource, "fragmentColor");
+	void initializeShaders() {
+		simpleProgram.Create(vertexSource, fragmentSource, "fragmentColor"); 
+		textureProgram.Create(textureVertexShader, textureFragmentShader, "fragmentColor");
+		setShader(false);
 	}
 
-	void setMVP(mat4& mvp) {
-		mvp.SetUniform(gpuProgram.getId(), "MVP");
+	void setShader(bool texture) {
+		if (texture) textureProgram.Use();
+		else simpleProgram.Use();
+	}
+
+	void setMVP(mat4 mvp) {
+		char * str = "MVP";
+		mvp.SetUniform(simpleProgram.getId(), str);
+	}
+
+	void bindTexture(const unsigned int textureId) {
+		int location = glGetUniformLocation(textureProgram.getId(), "textureUnit");
+		if (location >= 0) {
+			glUniform1i(location, 0);		// texture sampling unit is TEXTURE0
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, textureId);	// connect the texture to the sampler
+		}
 	}
 };
 class Transformation {
-	boolean rotated = false, translated = false, scaled = false, turned = true;
+	bool rotated = false, translated = false, scaled = false, turned = true;
 
 	mat4 unitM() const {
 		return mat4(
@@ -259,6 +320,172 @@ public:
 		glDrawArrays(drawingMethod, 0, pointSize);
 	}
 };
+class TextureMesh {
+	unsigned int vao, vbo, textureId;	// vertex array object id and texture id
+	vec2 vertices[4];
+public:
+	TextureMesh() {
+		vertices[0] = vec2(-1, -1);
+		vertices[1] = vec2(1, -1);
+		vertices[2] = vec2(1, 1);
+		vertices[3] = vec2(-1, 1);
+	}
+	void initialize() {
+		glGenVertexArrays(1, &vao);	// create 1 vertex array object
+		glBindVertexArray(vao);		// make it active
+
+		glGenBuffers(1, &vbo);	// Generate 1 vertex buffer objects
+
+		// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
+		glBindBuffer(GL_ARRAY_BUFFER, vbo); // make it active, it is an array
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
+		// Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);     // stride and offset: it is tightly packed
+
+		// Create objects by setting up their vertex data on the GPU
+		glGenTextures(1, &textureId);  				// id generation
+		glBindTexture(GL_TEXTURE_2D, textureId);    // binding
+	}
+
+	void setImage(const std::vector<vec3>& image, const unsigned int width, const unsigned int height){
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGB, GL_FLOAT, &image[0]); // To GPU
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); // sampling
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	}
+
+	unsigned int getTextureId() {
+		return textureId;
+	}
+
+	void draw() {
+		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
+		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);	// draw two triangles forming a quad
+	}
+};
+class CatmullRom {
+	std::vector<vec2> controlPoints;
+	const float dx;
+	const float tension;
+
+	float catmull(const float x) {
+		const unsigned int size = controlPoints.size();
+		for (unsigned int i = 0; i < size; ++i) {
+			if (controlPoints[i].x > x) {
+				vec2 pi1 = controlPoints[i], pi = controlPoints[i - 1];
+				vec2 v0, v1;
+				if (i > 1) {
+					vec2 pim1 = controlPoints[i - 2];
+					v0 = (m(pim1, pi) + m(pi, pi1));
+				}
+				else v0 = m(pi, pi1);
+				if (i < size - 1) {
+					vec2 pi2 = controlPoints[i + 1];
+					v1 = (m(pi, pi1) + m(pi1, pi2));
+				}
+				else v1 = m(pi, pi1);
+				v0 = v0 * 0.5f * (1 - tension);
+				v1 = v1 * 0.5f * (1 - tension);
+				return hermite(pi, v0, pi.x, pi1, v1, pi1.x, x).y;
+			}
+		}
+	}
+
+	inline vec2 hermite(const vec2& p0, const vec2& v0, float t0, const vec2& p1, const vec2& v1, float t1, float t) {
+		vec2 a0 = p0, a1 = v0;
+		float mT = t1 - t0;
+		float mT2 = mT * mT;
+		float mT3 = mT2 * mT;
+		vec2 a2 = (p1 - p0) * (1 / mT2) * 3 - (v1 + v0 * 2)  * (1 / mT);
+		vec2 a3 = (p0 - p1) * (1 / mT3) * 2 + (v1 + v0) * (1 / mT2);
+		t -= t0;
+		return a3 * pow(t, 3) + a2 * pow(t, 2) + a1 * t + a0;
+	}
+
+	inline float pow(const float num, const int exp) {
+		float res = 1;
+		for (int i = 0; i < exp; ++i) res *= num;
+		return res;
+	}
+public:
+	CatmullRom(const std::vector<vec2>& controlPoints, const float tension, const float dx) :
+		tension(tension),
+		dx(dx) {
+		std::vector<vec2> cps;
+		cps.push_back(vec2(controlPoints[0].x - 1.0f, controlPoints[0].y));
+		for (vec2 p : controlPoints) cps.push_back(p);
+		cps.push_back(vec2(controlPoints[controlPoints.size() - 1].x + 1.0f, controlPoints[controlPoints.size() - 1].y));
+		this->controlPoints = cps;
+	}
+
+	void setSpline(std::vector<vec2>& topPoints) {
+		topPoints.clear();
+		const float firstX = controlPoints[0].x - 4.0f, lastX = controlPoints[controlPoints.size() - 1].x + 4.0f;
+		for (float x = firstX; x < lastX; x += dx)
+			topPoints.push_back(vec2(x, catmull(x)));
+	}
+};
+class BackGround {
+	TextureMesh* texture;
+	const unsigned int width = 1200, height = 1200;
+public:
+
+	float isUnderSpline(const std::vector<vec2>& points, const vec2& pos) {
+		for (const vec2 point : points) {
+			if (point.x > pos.x)
+				return pos.y - point.y;
+		}
+		return true;
+	}
+
+	void init() {
+		texture = new TextureMesh();
+		texture->initialize();
+
+		std::vector<vec2> cps;
+		cps.push_back(vec2(-15.0f, 0.0f));
+		cps.push_back(vec2(-5.0f, 7.0f));
+		cps.push_back(vec2(0.0f, 0.0f));
+		cps.push_back(vec2(5.0f, 5.0f));
+		cps.push_back(vec2(15.0f, 0.0f));
+		CatmullRom* spline = new CatmullRom(cps, -1, 0.05f);
+
+		std::vector<vec2> points;
+		spline->setSpline(points);
+		std::vector<vec3> image(width * height);
+		for (unsigned int y = 0; y < height; y++) {
+			for (unsigned int x = 0; x < width; x++) {
+				const vec2 point = vec2((float)x - width / 2.0f, (float)y - height / 2.0f) * (1.0f / height) * 20.0f;
+				float d = isUnderSpline(points, point);
+				if (d > 0) image[y * width + x] = vec3(0.2f, 0.4f, 0.9f) + vec3(0.1f, 0.1f, 0.1f) * (3.5f - d / 3);
+				else {
+					d += point.y / 2.0f;
+					if (d > -3.0) {
+						image[y * width + x] = vec3(0.25f, 0.45f, 0.15f);
+						continue;
+					}
+					d += point.y / 1.5f;
+					if (d > -9.0f) image[y * width + x] = vec3(0.2f, 0.35f, 0.1f);
+					else image[y * width + x] = vec3(0.1f, 0.25f, 0.05f);
+				}
+			}
+		}
+		delete spline;
+		texture->setImage(image, width, height);
+	}
+
+	unsigned int getTexture() {
+		return texture->getTextureId();
+	}
+
+	void draw() {
+		texture->draw();
+	}
+
+	virtual ~BackGround() {
+		delete texture;
+	}
+};
 class GraphicsObject {
 protected:
 	GraphicsObject* container = nullptr;
@@ -325,15 +552,22 @@ public:
 };
 class Renderer {
 	std::vector<GraphicsObject*> objects;
+	BackGround bg;
 	Shader* shader;
 public:
 	Camera2D camera;		// 2D camera
 
 	Renderer(Shader* shader): shader(shader) { 
-		shader->initializeShader();
+		shader->initializeShaders();
+		bg.init();
 	}
 
 	void render() {
+		shader->setShader(true);
+		shader->bindTexture(bg.getTexture());
+		bg.draw();
+
+		shader->setShader(false);
 		for (GraphicsObject* object : objects) {
 			shader->setMVP(object->M() * camera.P() * camera.V());
 			object->draw();
@@ -395,11 +629,6 @@ public:
 			points.push_back(cosf(phi) * radiusOut);
 			points.push_back(sinf(phi) * radiusIn);
 			points.push_back(cosf(phi) * radiusIn);
-			if (phi < 0.4f) {
-				colors.push_back(vec3(1, 0, 0));
-				colors.push_back(vec3(1, 0, 0));
-				continue;
-			}
 			colors.push_back(colorIn);
 			colors.push_back(colorOut);
 		}
@@ -430,15 +659,15 @@ public:
 		mesh->setColors(colors);
 	}
 };
+
 class Mountain : public GraphicsObject {
 protected:
 	std::vector<vec2> controlPoints;
-	const float dx = 0.00003f;
 	std::vector<vec2> topPoints;
 
 	virtual void refresh() {
-		vec3 topColor(0.1f, 0.8f, 0.2f);
-		vec3 bottomColor(0.05f, 0.3f, 0.1f);
+		vec3 topColor(0.3f, 0.7f, 0.25f);
+		vec3 bottomColor(0.08f, 0.13f, 0.05f);
 		countTopPoints();
 		std::vector<float> points;
 		std::vector<vec3> colors;
@@ -455,55 +684,15 @@ protected:
 	}
 
 	void countTopPoints() {
-		topPoints.clear();
-		const float firstX = controlPoints[0].x - 2.0f, lastX = controlPoints[controlPoints.size() - 1].x + 2.0f;
-		for (float x = firstX; x < lastX; x += dx)
-			topPoints.push_back(vec2(x, countKochanekY(x)));
-	}
-
-	float countKochanekY(const float x) {
-		const unsigned int size = controlPoints.size();
-		for (unsigned int i = 0; i < size; ++i) {
-			if (controlPoints[i].x > x) {
-				vec2 pi1 = controlPoints[i], pi = controlPoints[i - 1];
-				vec2 v0, v1;
-				if (i > 1) {
-					vec2 pim1 = controlPoints[i - 2];
-					v0 = (m(pim1, pi) + m(pi, pi1)) / 2;
-				}
-				else v0 = m(pi, pi1) / 2;
-				if (i < size - 1) {
-					vec2 pi2 = controlPoints[i + 1];
-					v1 = (m(pi, pi1) + m(pi1, pi2)) / 2;
-				}
-				else v0 = m(pi, pi1) / 2;
-
-				return hermite(pi, v0, pi.x, pi1, v1, pi1.x, x).y;
-			}
-		}
-	}
-
-	inline vec2 hermite(const vec2& p0, const vec2& v0, float t0, const vec2& p1, const vec2& v1, float t1, float t) {
-		vec2 a0 = p0, a1 = v0;
-		float mT = t1 - t0;
-		float mT2 = mT * mT;
-		float mT3 = mT2 * mT;
-		vec2 a2 = (p1 - p0) * (1 / mT2) * 3 - (v1 + v0 * 2)  * (1 / mT);
-		vec2 a3 = (p0 - p1) * (1 / mT3) * 2 + (v1 + v0) * (1 / mT2);
-		t -= t0;
-		return a3 * pow(t, 3) + a2 * pow(t, 2) + a1 * t + a0;
-	}
-
-	inline float pow(const float num, const int exp) {
-		float res = 1;
-		for (int i = 0; i < exp; ++i) res *= num;
-		return res;
+		CatmullRom* spline = new CatmullRom(controlPoints, -1, 0.00003f);
+		spline->setSpline(topPoints);
+		delete spline;
 	}
 public:
 	virtual void init() {
 		mesh = new Mesh(GL_TRIANGLE_STRIP, GL_STATIC_DRAW);
-		controlPoints.push_back(vec2(-11, -6));
-		controlPoints.push_back(vec2(11, -6));
+		controlPoints.push_back(vec2(-13, -6));
+		controlPoints.push_back(vec2(13, -6));
 		refresh();
 	}
 
@@ -523,7 +712,7 @@ public:
 	float getDerivative(const float x, bool direction = true) {
 		const unsigned int size = topPoints.size();
 		const unsigned int i = findPoint(x);
-		return m(topPoints[i], topPoints[i - 1]) * (direction ? 1.0f : -1.0f);
+		return m2(topPoints[i], topPoints[i - 1]) * (direction ? 1.0f : -1.0f);
 	}
 
 	unsigned int findPoint(const float x) {
@@ -560,62 +749,13 @@ public:
 					return topPoints[i + 1];
 			}
 		}
-
+		return currentPosition;
 	}
 };
-class Ground : public Mountain {
-	class Grass : public GraphicsObject {
-		int randomNumber(const int i) {
-			srand(time(NULL) + i);
-			return std::rand() % 10;
-		}
-	public:
-		void init() {
-			mesh = new Mesh(GL_LINES, GL_STATIC_DRAW);
-		}
 
-		void refresh(const std::vector<vec2> topPoints) {
-			const unsigned int size = topPoints.size();
-			const vec3 defColor(0.2f, 0.8f, 0.1f);
-			std::vector<vec2> points;
-			std::vector<vec3> colors;
-			for (int i = 0; i < size; i += (randomNumber(i) + 1) * 1000) {
-				const unsigned int numOfGrass = randomNumber(i * 5) / 3 + 1;
-				for (int j = 0; j < numOfGrass; ++j) {
-					const float length = (int)(randomNumber(i + j) / 3) * 0.13f;
-					const float ang = PI / 10 * (randomNumber(i + j * 7)) - PI / 2 - atanf(m(topPoints[i + 1], topPoints[i]));
-					const vec3 color = defColor * (0.5 + randomNumber(i + j) / 20.0f);
-					points.push_back(vec2(topPoints[i].x, topPoints[i].y));
-					points.push_back(vec2(
-						topPoints[i].x + sin(ang) * length,
-						topPoints[i].y + cos(ang) * length));
-					colors.push_back(color * 0.5);
-					colors.push_back(color);
-				}
-			}
-
-			mesh->setPositions(points);
-			mesh->setColors(colors);
-		}
-	};
-	Grass* grass;
-public:
-	void init() {
-		grass = new Grass();
-		grass->setContainer(this);
-		renderer->addObject(grass);
-
-		Mountain::init();
-	}
-
-	void refresh() {
-		Mountain::refresh();
-		grass->refresh(topPoints);
-	}
-};
-Ground ground;
+Mountain ground;
 class Biker : public GraphicsObject {
-	static enum Direction { LEFT = -1, RIGHT = 1 };
+	enum Direction { LEFT = -1, RIGHT = 1 };
 	float phi;
 	const float radius = 1.7f;
 
@@ -660,13 +800,13 @@ class Biker : public GraphicsObject {
 			head = new Circle(0.7f, color, true);
 			head->setContainer(this);
 			renderer->addObject(head);
-			head->translate(vec2(0, 3 + 0.7));
+			head->translate(vec2(0, 3.0f + 0.7f));
 
 			mesh = new Mesh(GL_LINES, GL_DYNAMIC_DRAW);
 			std::vector<vec2> points;
-			points.push_back(vec2(0, 0)); points.push_back(vec2(0, 3));
-			points.push_back(vec2(0, 2.6)); points.push_back(vec2(-0.4, 1));
-			points.push_back(vec2(-0.4, 1)); points.push_back(vec2(0.8, -0.3));
+			points.push_back(vec2(0, 0)); points.push_back(vec2(0, 3.0f));
+			points.push_back(vec2(0, 2.6f)); points.push_back(vec2(-0.4f, 1.0f));
+			points.push_back(vec2(-0.4f, 1.0f)); points.push_back(vec2(0.8f, -0.3f));
 
 			mesh->setPositions(points);
 			mesh->setUniformColor(color);
@@ -788,10 +928,10 @@ public:
 	}
 
 	float a() {
-		float a = 3.0f;
+		float a = 5.2f;
 		const float derivative = ground.getDerivative(position.x, direction == LEFT);
 		const float alpha = atanf(derivative);
-		const float gravityForce = 6.0f, rho = 0.1f;
+		const float gravityForce = 9.4f, rho = 0.08f;
 		a += gravityForce * sin(alpha);
 		a -= (velocity * velocity * rho);
 		return a;
@@ -857,12 +997,6 @@ void onDisplay() {
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
 	switch (key) {
-	case 's': renderer->camera.Pan(vec2(-1, 0)); break;
-	case 'd': renderer->camera.Pan(vec2(+1, 0)); break;
-	case 'e': renderer->camera.Pan(vec2(0, 1)); break;
-	case 'x': renderer->camera.Pan(vec2(0, -1)); break;
-	case 'z': renderer->camera.Zoom(0.9f); break;
-	case 'Z': renderer->camera.Zoom(1.1f); break;
 	case ' ': toggleFollowing(); break;
 	}
 	glutPostRedisplay();
@@ -878,7 +1012,6 @@ void onMouse(int button, int state, int pX, int pY) {
 		float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
 		float cY = 1.0f - 2.0f * pY / windowHeight;
 		ground.addControlPoints(cX, cY);
-		printVec(ground.getNextPosition(vec2(0, 0), 0.1f));
 		glutPostRedisplay();     // redraw
 	}
 }
