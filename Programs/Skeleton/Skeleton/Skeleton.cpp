@@ -370,7 +370,7 @@ class CatmullRom {
 
 	float catmull(const float x) {
 		const unsigned int size = controlPoints.size();
-		for (unsigned int i = 0; i < size; ++i) {
+		for (unsigned int i = 1; i < size; ++i) {
 			if (controlPoints[i].x > x) {
 				vec2 pi1 = controlPoints[i], pi = controlPoints[i - 1];
 				vec2 v0, v1;
@@ -759,7 +759,7 @@ class Biker : public GraphicsObject {
 	float phi;
 	const float radius = 1.7f;
 
-	float velocity = 1;
+	float velocity = 5.0f;
 	Direction direction = RIGHT;
 	vec2 position = vec2(0, -6.0f);
 	
@@ -928,12 +928,12 @@ public:
 	}
 
 	float a() {
-		float a = 5.2f;
-		const float derivative = ground.getDerivative(position.x, direction == LEFT);
+		float a = 9.2f;
+		const float derivative = ground.getDerivative(position.x, direction == LEFT ^ (velocity < 0));
 		const float alpha = atanf(derivative);
-		const float gravityForce = 9.4f, rho = 0.08f;
+		const float gravityForce = 9.8f, rho = 0.16f;
 		a += gravityForce * sin(alpha);
-		a -= (velocity * velocity * rho);
+		a -= (velocity * velocity * rho) * (velocity > 0 ? 1 : -1);
 		return a;
 	}
 
@@ -949,6 +949,12 @@ public:
 
 		position = ground.getNextPosition(position, abs(distance), (direction == RIGHT) ^ (distance < 0));
 		translate(countCenter());
+	}
+
+	void reset() {
+		velocity = 5.0f;
+		position = vec2(0, 0);
+		move(0.0001f);
 	}
 
 	void turn() {
@@ -1012,6 +1018,7 @@ void onMouse(int button, int state, int pX, int pY) {
 		float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
 		float cY = 1.0f - 2.0f * pY / windowHeight;
 		ground.addControlPoints(cX, cY);
+		biker.reset();
 		glutPostRedisplay();     // redraw
 	}
 }
