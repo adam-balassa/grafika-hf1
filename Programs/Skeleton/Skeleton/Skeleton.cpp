@@ -928,10 +928,10 @@ public:
 	}
 
 	float a() {
-		float a = 9.2f;
+		float a = 6.9f;
 		const float derivative = ground.getDerivative(position.x, direction == LEFT ^ (velocity < 0));
 		const float alpha = atanf(derivative);
-		const float gravityForce = 9.8f, rho = 0.16f;
+		const float gravityForce = 9.0f, rho = 0.13f;
 		a += gravityForce * sin(alpha);
 		a -= (velocity * velocity * rho) * (velocity > 0 ? 1 : -1);
 		return a;
