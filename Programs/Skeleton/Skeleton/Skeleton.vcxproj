@@ -78,19 +78,10 @@
     <ClCompile Include="Skeleton.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Biker.h" />
-    <ClInclude Include="camera.h" />
-    <ClInclude Include="Circle.h" />
-    <ClInclude Include="framework.h" />
-    <ClInclude Include="graphicsObject.h" />
-    <ClInclude Include="kochanek.h" />
-    <ClInclude Include="lineStrip.h" />
-    <ClInclude Include="shaders.h" />
-    <ClInclude Include="triangle.h" />
-    <ClInclude Include="world.h" />
+    <Text Include="vertexShader.txt" />
   </ItemGroup>
   <ItemGroup>
-    <Text Include="vertexShader.txt" />
+    <ClInclude Include="framework.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
