@@ -26,9 +26,15 @@
     <Text Include="vertexShader.txt">
       <Filter>Resource Files</Filter>
     </Text>
+    <Text Include="shader.txt">
+      <Filter>Resource Files</Filter>
+    </Text>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="code.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

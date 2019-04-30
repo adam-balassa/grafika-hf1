@@ -78,9 +78,11 @@
     <ClCompile Include="Skeleton.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <Text Include="shader.txt" />
     <Text Include="vertexShader.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="code.h" />
     <ClInclude Include="framework.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
