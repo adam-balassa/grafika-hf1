@@ -8,7 +8,7 @@
 // Light: point
 //=============================================================================================
 #include "framework.h"
-#define max(a, b) a > b ? a : b;
+#define max(a, b) a > b ? a : b
 
 const int tessellationLevel = 20;
 class LadyBird;
@@ -16,22 +16,22 @@ class LadyBird;
 
 struct quat {
 	float r, i, j, k;
-	quat(float r, float i, float j, float k): r(r), i(i), j(j), k(k){}
+	quat(float i, float j, float k, float r): r(r), i(i), j(j), k(k){}
 	quat(vec4 v) {
-		r = v.x;
-		i = v.y;
-		j = v.z;
-		k = v.w;
+		r = v.w;
+		i = v.x;
+		j = v.y;
+		k = v.z;
 	}
 	quat operator*(const quat& q) const {
-		vec3 d1(r, i, j), d2(q.r, q.j, q.i);
-		vec3 a(d2 * q.k + d1 * q.k + cross(d1, d2));
-		return quat(a.x, a.y, a.z, k * k - dot(d1, d2));
+		vec3 d1(i, j, k), d2(q.i, q.j, q.k);
+		vec3 a(d2 * r + d1 * q.r + cross(d1, d2));
+		return quat(a.x, a.y, a.z, r * q.r - dot(d1, d2));
 	}
 	static vec3 rotate(vec3 u, quat q) {
-		quat qinv(-q.r, -q.i, -q.j, q.k);
+		quat qinv(-q.i, -q.j, -q.k, q.r);
 		quat qr = q * quat(u.x, u.y, u.z, 0) * qinv;
-		return vec3(qr.r, qr.i, qr.j);
+		return vec3(qr.i, qr.j, qr.k);
 	}
 
 };
@@ -701,7 +701,7 @@ public:
 		geometry->Draw();
 	}
 
-	virtual void Animate(float tstart, float tend) { rotationAngle = 0.8 * tend; }
+	virtual void Animate(float tstart, float tend) { };
 	virtual ~Object() {
 		delete shader;
 		delete texture;
@@ -726,7 +726,6 @@ struct Planet : public Object {
 		du = vd.du;
 		dv = vd.dv;
 	}
-	void Animate(float tstart, float tend) { }
 };
 
 class LadyBird : public Object {
@@ -755,13 +754,16 @@ public:
 
 		vec3 du, dv, normal;
 		planet->getPosition(position.x, position.y, translation, normal, du, dv);
-		vec3 dr = du * sinf(angle) + dv * cosf(angle);
 
-		const float s = velocity / length(dr) * dT;
-		const vec2 d(sinf(angle) * s, cosf(angle) * s);
+		vec2 derivative(length(du), length(dv));
+		derivative = normalize(derivative);
+		vec2 s = vec2(1 / length(du), 1 / length(dv)) * dT * velocity;
+
+		const vec2 d(sinf(angle) * s.x, cosf(angle) * s.y);
 		position = position + d;
 
-		vec3 j = normalize(dr), i = normalize(normal);
+		vec3 dr = du * sinf(angle) * s.x + dv * cosf(angle) * s.y;
+		vec3 j = normalize(-dr), i = normalize(normal);
 		vec3 k = cross(j, i);
 		m = mat4(
 			i.x, i.y, i.z, 0,
@@ -826,7 +828,6 @@ public:
 		translation = translation + norm * 0.5f;
 		scale = vec3(1, 1, 1) * 0.2f;
 	}
-	void Animate(float tStart, float tEnd) { }
 };
 
 //---------------------------
@@ -887,7 +888,7 @@ public:
 
 	void Animate(float tstart, float tend) {
 		camera->Animate(tend);
-		for (int i = 0; i < lights.size(); i++) { lights[i].Animate(tend); }
+		for (int i = 0; i < lights.size(); i++) { lights[i].Animate(tend - tstart); }
 		for (Object * obj : objects) obj->Animate(tstart, tend);
 	}
 	~Scene() {
