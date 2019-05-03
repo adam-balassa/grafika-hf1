@@ -8,9 +8,34 @@
 // Light: point
 //=============================================================================================
 #include "framework.h"
+#define max(a, b) a > b ? a : b;
 
 const int tessellationLevel = 20;
 class LadyBird;
+
+
+struct quat {
+	float r, i, j, k;
+	quat(float r, float i, float j, float k): r(r), i(i), j(j), k(k){}
+	quat(vec4 v) {
+		r = v.x;
+		i = v.y;
+		j = v.z;
+		k = v.w;
+	}
+	quat operator*(const quat& q) const {
+		vec3 d1(r, i, j), d2(q.r, q.j, q.i);
+		vec3 a(d2 * q.k + d1 * q.k + cross(d1, d2));
+		return quat(a.x, a.y, a.z, k * k - dot(d1, d2));
+	}
+	static vec3 rotate(vec3 u, quat q) {
+		quat qinv(-q.r, -q.i, -q.j, q.k);
+		quat qr = q * quat(u.x, u.y, u.z, 0) * qinv;
+		return vec3(qr.r, qr.i, qr.j);
+	}
+
+};
+
 //---------------------------
 struct Camera { // 3D camera
 //---------------------------
@@ -75,7 +100,17 @@ struct Light {
 	vec3 La, Le;
 	vec4 wLightPos;
 
-	void Animate(float t) {	}
+	void Animate(float t) {	
+		const quat q(
+			cosf(t / 4.0f),
+			sinf(t / 4.0f) * cosf(t) * 0.5f,
+			sinf(t / 4.0f) * sinf(t) * 0.5f,
+			sinf(t / 4.0f) * sqrtf(0.75f)
+		);
+
+		vec3 a = quat::rotate(quat::rotate(vec3(wLightPos.x, wLightPos.y, wLightPos.z), q), q);
+		wLightPos = vec4(a.x, a.y, a.z, wLightPos.w);
+	}
 
 	void SetUniform(unsigned shaderProg, char * name) {
 		char buffer[256];
@@ -112,23 +147,34 @@ class LadybirdTexture : public Texture {
 		return (float)rand() / RAND_MAX;
 	}
 	std::vector<vec2> dots;
-	const float radius = 20.0f;
+	const float radius = 10.0f;
 	vec3 getPixel(int x, int y) {
-		const vec3 red(1, 0, 0), black(0, 0, 0);
+		const vec3 red(1, 0, 0), black(0, 0, 0), white(1, 1, 1);
+		if (length(vec2(320, 130) - vec2(x, y)) < 15.0f) return white;
+		if (length(vec2(320, 70) - vec2(x, y)) < 15.0f) return white;
+		if (abs(y - 100.0f) < 1.2f) return black;
 		for (vec2 dot : dots)
 			if (length(dot - vec2(x, y)) < radius)
 				return black;
+		if (length(vec2(355, 110) - vec2(x, y)) < 11.0f) return white;
+		if (length(vec2(355, 90) - vec2(x, y)) < 11.0f) return white;
 		return red;
 	}
 public:
-	LadybirdTexture(const int width = 400, const int height = 400) : Texture() {
-		dots.push_back(vec2(50, 100));
-		dots.push_back(vec2(20, 180));
-		dots.push_back(vec2(30, 240));
-		dots.push_back(vec2(350, 150));
-		dots.push_back(vec2(350, 200));
-		dots.push_back(vec2(360, 300));
-		dots.push_back(vec2(50, 320));
+	LadybirdTexture(const int width = 400, const int height = 200) : Texture() {
+		dots.push_back(vec2(45, 70));
+		dots.push_back(vec2(45, 130));
+		dots.push_back(vec2(380, 60));
+		dots.push_back(vec2(380, 150));
+		dots.push_back(vec2(8, 80));
+		dots.push_back(vec2(8, 120));
+		dots.push_back(vec2(408, 80));
+		dots.push_back(vec2(408, 120));
+		dots.push_back(vec2(370, 100));
+		dots.push_back(vec2(373, 100));
+		dots.push_back(vec2(370, 105));
+		dots.push_back(vec2(370, 95));
+		for (int j = 0; j < 6; ++j) for (int i = 0; i < 15; ++i) dots.push_back(vec2(320 + 6.0 * (j - abs(i - 5.0f) * 0.4f), 40 + 12 * i));
 		glBindTexture(GL_TEXTURE_2D, textureId);    // binding
 		std::vector<vec3> image(width * height);
 		for (int x = 0; x < width; x++) for (int y = 0; y < height; y++) {
@@ -407,7 +453,7 @@ public:
 //---------------------------
 struct VertexData {
 	//---------------------------
-	vec3 position, normal;
+	vec3 position, normal, du, dv;
 	vec2 texcoord;
 };
 
@@ -564,6 +610,8 @@ class Klein : public ParamSurface {
 public:
 	Klein() {Create(); }
 
+
+
 	VertexData GenVertexData(float u, float v) {
 		VertexData vd;
 		float U = u * 2.0f * M_PI, V = v * 2.0f * M_PI;
@@ -577,13 +625,13 @@ public:
 					z = c * sinf(V);
 
 		vd.position = vec3(x.f, y.f, z.f) * 0.17f;
-		vec3 drdU(x.d, y.d, z.d);
-		vec3 drdV(
+		vd.du = vec3(x.d, y.d, z.d);
+		vd.dv = vec3(
 			cond ? c.f * (-1) * sinf(V + M_PI) : c.f * cosf(U) * (-1) * sinf(V),
 			cond ? 0 : c.f * sinf(U) * (-1) * sinf(V),
 			c.f * cosf(V)
 		);
-		vd.normal = cross(drdU, drdV);
+		vd.normal = cross(vd.du, vd.dv);
 		vd.texcoord = vec2(u, v);
 		return vd;
 	}
@@ -654,6 +702,12 @@ public:
 	}
 
 	virtual void Animate(float tstart, float tend) { rotationAngle = 0.8 * tend; }
+	virtual ~Object() {
+		delete shader;
+		delete texture;
+		delete geometry;
+		delete material;
+	}
 };
 
 struct Planet : public Object {
@@ -665,28 +719,23 @@ struct Planet : public Object {
 		rotationAngle = 0;
 	}
 	
-	void getPosition(const float u, const float v, vec3& pos, vec3& norm) const {
+	void getPosition(const float u, const float v, vec3& pos, vec3& norm, vec3& du, vec3& dv) const {
 		VertexData vd = ((ParamSurface*)this->geometry)->GenVertexData(u, v);
 		norm = vd.normal;
 		pos = vd.position + translation;
+		du = vd.du;
+		dv = vd.dv;
 	}
 	void Animate(float tstart, float tend) { }
 };
 
 class LadyBird : public Object {
-	float angle = 0 ;
-	float velocity = 0.1f;
+	float angle = 0;
+	float velocity = 0.8f;
 	vec2 position = vec2(0.2f, 0);
-	vec3 normal;
 	Planet* planet;
+	mat4 m, mInv;
 	float x = 0;
-	void replace() {
-		planet->getPosition(position.x, position.y, translation, normal);
-		normal = normalize(normal);
-		rotationAxis = cross(vec3(1, 0, 0), normal);
-		const float cosTheta = dot(vec3(1, 0, 0), normal);
-		rotationAngle = acosf(cosTheta);
-	}
 
 public:
 	LadyBird(Planet* p): Object(
@@ -703,20 +752,42 @@ public:
 	void Animate(float tStart, float tEnd) {
 		static float lastT = tStart;
 		const float dT = lastT - tEnd;
-		const float s = velocity * dT;
+
+		vec3 du, dv, normal;
+		planet->getPosition(position.x, position.y, translation, normal, du, dv);
+		vec3 dr = du * sinf(angle) + dv * cosf(angle);
+
+		const float s = velocity / length(dr) * dT;
 		const vec2 d(sinf(angle) * s, cosf(angle) * s);
 		position = position + d;
 
-		if (position.x > 1 || position.x < 0) position.x = position.x > 0.5f ? 0 : 1;
-		if (position.y > 1 || position.y < 0) position.y = position.y > 0.5f ? 0 : 1;
-		replace();
+		vec3 j = normalize(dr), i = normalize(normal);
+		vec3 k = cross(j, i);
+		m = mat4(
+			i.x, i.y, i.z, 0,
+			j.x, j.y, j.z, 0,
+			k.x, k.y, k.z, 0,
+			0, 0, 0, 1
+		);
+
+		mInv = mat4(
+			i.x, j.x, k.x, 0,
+			i.y, j.y, k.y, 0,
+			i.z, j.z, k.z, 0,
+			0, 0, 0, 1
+		);
+
 		lastT = tEnd;
 	}
 
 	void Draw(RenderState state) {
-		float ang = angle + M_PI / 2;
-		state.M = ScaleMatrix(scale) * RotationMatrix(rotationAngle, rotationAxis) * TranslateMatrix(translation);
-		state.Minv = TranslateMatrix(-translation) * RotationMatrix(-rotationAngle, rotationAxis) * ScaleMatrix(vec3(1 / scale.x, 1 / scale.y, 1 / scale.z));
+		vec3 du, dv, normal;
+		planet->getPosition(position.x, position.y, translation, normal, du, dv);
+		vec3 dr = du * sinf(angle) + dv * cosf(angle);
+		
+
+		state.M = ScaleMatrix(scale) * m * TranslateMatrix(translation);
+		state.Minv = TranslateMatrix(-translation) * mInv * ScaleMatrix(vec3(1 / scale.x, 1 / scale.y, 1 / scale.z));
 		state.MVP = state.M * state.V * state.P;
 		state.material = material;
 		state.texture = texture;
@@ -725,7 +796,8 @@ public:
 	}
 
 	void getPosition(vec3& pos, vec3& norm) {
-		planet->getPosition(position.x, position.y, pos, norm);
+		vec3 du, dv;
+		planet->getPosition(position.x, position.y, pos, norm, du, dv);
 	}
 };
 
@@ -741,12 +813,12 @@ class Tree : public Object {
 public:
 	Tree(Planet* p, vec2 position) : Object(
 		new PhongShader(),
-		new Material(vec3(0.6f, 0.4f, 0.2f), vec3(4, 4, 4), vec3(0.1f, 0.1f, 0.1f), 100),
+		new Material(vec3(0.7f, 0.2f, 0.1f), vec3(4, 4, 4), vec3(0.1f, 0.1f, 0.1f), 100),
 		new CheckerBoardTexture(10, 10),
 		new Dini()
 	) {
-		vec3 norm;
-		p->getPosition(position.x, position.y, translation, norm);
+		vec3 norm, du, dv;
+		p->getPosition(position.x, position.y, translation, norm, du, dv);
 		norm = normalize(norm);
 		rotationAxis = cross(vec3(0, 0, 1), norm);
 		const float cosTheta = dot(vec3(0, 0, 1), norm);
@@ -767,36 +839,12 @@ public:
 	std::vector<Light> lights;
 
 	void Build() {
-		// Shaders
-		Shader * phongShader = new PhongShader();
-		Shader * gouraudShader = new GouraudShader();
-		Shader * nprShader = new NPRShader();
-
-		// Materials
-		Material * material0 = new Material;
-		material0->kd = vec3(0.6f, 0.4f, 0.2f);
-		material0->ks = vec3(4, 4, 4);
-		material0->ka = vec3(0.1f, 0.1f, 0.1f);
-		material0->shininess = 100;
-
-		Material * material1 = new Material;
-		material1->kd = vec3(0.8, 0.6, 0.4);
-		material1->ks = vec3(0.3, 0.3, 0.3);
-		material1->ka = vec3(0.2f, 0.2f, 0.2f);
-		material1->shininess = 30;
-
-		// Textures
-		Texture * texture4x8 = new CheckerBoardTexture(4, 8);
-		Texture * texture15x20 = new CheckerBoardTexture(30, 30);
-		Texture * ladybirdTex = new LadybirdTexture();
-
-
 		Planet * planet = new Planet();
 		planet->rotationAxis = vec3(1, 1, -1);
 		objects.push_back(planet);
 
 		ladyBird = new LadyBird(planet);
-		ladyBird->scale = vec3(1, 1, 1.2) * 0.1f;
+		ladyBird->scale = vec3(1, 1.2f, 1) * 0.1f;
 		objects.push_back(ladyBird);
 
 		Tree* tree = new Tree(planet, vec2(0.3f, 0.9f));
@@ -804,6 +852,16 @@ public:
 
 		Tree* tree2 = new Tree(planet, vec2(0.1f, 0.4f));
 		objects.push_back(tree2);
+		Tree* tree3 = new Tree(planet, vec2(0.2f, 0.8f));
+		objects.push_back(tree3);
+		Tree* tree4 = new Tree(planet, vec2(0.58f, 0.1f));
+		objects.push_back(tree4);
+		Tree* tree5 = new Tree(planet, vec2(0.7f, 0.7f));
+		objects.push_back(tree5);
+		Tree* tree6 = new Tree(planet, vec2(0.55f, 0.85f));
+		objects.push_back(tree6);
+		Tree* tree7 = new Tree(planet, vec2(0.38f, 0.2f));
+		objects.push_back(tree7);
 
 		// Camera
 		camera = new Camera(ladyBird);
@@ -832,6 +890,10 @@ public:
 		for (int i = 0; i < lights.size(); i++) { lights[i].Animate(tend); }
 		for (Object * obj : objects) obj->Animate(tstart, tend);
 	}
+	~Scene() {
+		for (Object* o : objects) delete o;
+		delete camera;
+	}
 };
 
 Scene scene;
@@ -857,10 +919,10 @@ void onKeyboard(unsigned char key, int pX, int pY) {
 	switch (key)
 	{
 	case 'a':
-		scene.ladyBird->turn(0.1f);
+		scene.ladyBird->turn(M_PI / 4);
 		break;
 	case 's':
-		scene.ladyBird->turn(-0.1f);
+		scene.ladyBird->turn(-M_PI / 4);
 		break;
 	case ' ':
 		scene.camera->toggleDistance();
